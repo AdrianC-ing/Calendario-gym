@@ -134,6 +134,12 @@
       monthDataPrefix: 'gym.month.' // + YYYY-MM
     };
 
+    // Fallback para navegadores sin structuredClone
+    function clone(obj){
+      if (typeof structuredClone === 'function') return structuredClone(obj);
+      try { return JSON.parse(JSON.stringify(obj)); } catch { return obj; }
+    }
+
     const defaultPlan = {
       "Lunes":    { go: true,  workout: "Pecho + Tríceps" },
       "Martes":   { go: true,  workout: "Espalda + Bíceps" },
@@ -203,7 +209,13 @@
     }
 
     function loadPlan(){
-      try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.plan)) || structuredClone(defaultPlan); } catch { return structuredClone(defaultPlan); }
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.plan));
+        return saved || clone(defaultPlan);
+      } catch {
+        return clone(defaultPlan);
+      }
+    } catch { return structuredClone(defaultPlan); }
     }
 
     function savePlan(){
