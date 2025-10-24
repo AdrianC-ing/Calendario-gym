@@ -13,6 +13,7 @@
       --weekend-bg:#12203a;
       --push:#60a5fa; --pull:#f472b6; --legs:#f59e0b;
       --selected:#38bdf8;
+      --warn-bg:#30200a; --warn-border:#b45309; --warn-text:#fcd34d;
     }
     *{box-sizing:border-box}
     body{margin:0; font-family:Arial, Helvetica, sans-serif; background:var(--bg); color:var(--text);}
@@ -23,18 +24,21 @@
     .btn{background:#0b1324; border:1px solid var(--line); color:var(--text); padding:8px 10px; border-radius:10px; cursor:pointer; font-weight:600;}
     .btn:hover{filter:brightness(1.1)}
     .btn.small{padding:6px 10px}
-    .panel{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; overflow-x:hidden;} /* evita scroll horizontal fantasma */
+    .panel{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; overflow-x:hidden;}
+
+    /* Avisos */
+    .notice{margin:0 0 12px; padding:10px; border-radius:12px; border:1px solid var(--warn-border); background:var(--warn-bg); color:var(--warn-text); font-size:13px;}
 
     /* --- CALENDARIO --- */
     .cal-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
     #head, #days{
       display:grid;
-      grid-template-columns: repeat(7, minmax(0, 1fr)); /* clave para que SIEMPRE encaje en móvil */
+      grid-template-columns: repeat(7, minmax(0, 1fr));
       gap:8px;
       width:100%;
     }
     .dow{ text-align:center; color:var(--muted); font-weight:700; font-size:12px; letter-spacing:.5px; text-transform:uppercase; min-width:0; }
-    .day{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:8px; min-height:110px; display:flex; flex-direction:column; gap:6px; transition:background .15s ease, border-color .15s ease, box-shadow .15s ease; min-width:0;}
+    .day{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:8px; min-height:110px; display:flex; flex-direction:column; gap:6px; transition:background .15s, border-color .15s, box-shadow .15s; min-width:0;}
     .day.weekend{ background: var(--weekend-bg); }
     .day.is-today{ background:var(--today-bg); border-color:var(--today-border); box-shadow:0 0 0 1px var(--today-border) inset; }
     .day.is-selected{ border-color: var(--selected); box-shadow: 0 0 0 1px var(--selected) inset; }
@@ -70,11 +74,17 @@
     .sum-pull .sum-value { color: var(--pull); }
     .sum-legs .sum-value { color: var(--legs); }
 
+    /* Sincronización */
+    .sync { margin: 12px 0 8px; padding:12px; background:#0b1324; border:1px solid var(--line); border-radius:12px; display:grid; gap:8px; }
+    .sync .row { display:flex; gap:8px; flex-wrap:wrap; }
+    .sync label { font-size:12px; color:var(--muted); }
+    .sync input[type="text"], .sync input[type="password"]{ width:100%; max-width:360px; background:#0a1325; color:#fff; border:1px solid var(--line); border-radius:10px; padding:8px; }
+    .sync .chk { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); }
+
     /* Móvil */
     @media (max-width: 600px) {
       .wrap{ margin: 12px auto; padding: 0 10px; }
       h1{ font-size: 18px; }
-      /* el header de días queda pegado arriba si scroll vertical */
       #head { position: sticky; top: 0; z-index: 2; background: #111827; padding-bottom: 6px; }
       .day{ min-height: 90px; padding: 6px; }
       .num{ font-size: 11px; }
@@ -99,6 +109,9 @@
         <button id="next" class="btn small" aria-label="Mes siguiente">▶</button>
       </div>
     </header>
+
+    <!-- Aviso si está como app de pantalla de inicio -->
+    <p id="standaloneNotice" class="notice hidden">Estás usando la app desde la pantalla de inicio. Recuerda que sus datos no se comparten con Safari. Si quieres tener lo mismo en ambos, usa la sincronización.</p>
 
     <div class="panel">
       <!-- Resumen mensual -->
@@ -130,7 +143,7 @@
         <span class="hint">Selecciona un día y luego el tipo.</span>
       </div>
 
-      <!-- Calendario (con envoltorio para alineación perfecta en móvil) -->
+      <!-- Calendario -->
       <div class="cal-wrap">
         <div class="grid" id="head"></div>
         <div class="grid" id="days"></div>
@@ -151,6 +164,10 @@
           <button id="gistUpload" class="btn small">Subir a Gist</button>
           <button id="gistDownload" class="btn small">Bajar de Gist</button>
         </div>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="autoOpen"/> Bajar automáticamente al abrir</label>
+          <label class="chk"><input type="checkbox" id="autoClose"/> Subir automáticamente al salir</label>
+        </div>
         <small class="help">El token y el ID se guardan solo en este navegador. Si pierdes el dispositivo, revoca el token en GitHub.</small>
       </div>
     </div>
@@ -168,8 +185,15 @@
         var DOW = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
         var MONTHS = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 
-        var today = new Date();
-        var view = new Date(today.getFullYear(), today.getMonth(), 1);
+        // === “Hoy” dinámico (sin hora)
+        function getToday(){
+          var n = new Date();
+          return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+        }
+        var currentToday = getToday();
+
+        // Vista actual y refs
+        var view = new Date(currentToday.getFullYear(), currentToday.getMonth(), 1);
         var selectedDay = null;
         var dayCells = {};
 
@@ -189,8 +213,18 @@
           createGist: document.getElementById('createGist'),
           gistUpload: document.getElementById('gistUpload'),
           gistDownload: document.getElementById('gistDownload'),
+          autoOpen: document.getElementById('autoOpen'),
+          autoClose: document.getElementById('autoClose'),
+          standaloneNotice: document.getElementById('standaloneNotice'),
         };
 
+        // Aviso si es standalone (icono de inicio) — datos no compartidos con Safari
+        var isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (window.navigator && window.navigator.standalone);
+        if (isStandalone && el.standaloneNotice){
+          el.standaloneNotice.classList.remove('hidden');
+        }
+
+        // ===== Cabecera (Lun..Dom)
         function buildHead(){
           el.head.innerHTML = '';
           for (var i=0; i<7; i++){
@@ -204,7 +238,7 @@
         function pad2(n){ return (n<10 ? '0' : '') + n; }
         function monthKey(d){ return d.getFullYear() + '-' + pad2(d.getMonth()+1); }
 
-        // Storage helpers
+        // ===== Storage helpers
         function normalizeDayEntry(v){
           if (v == null) return {note:'', type:''};
           if (typeof v === 'string') return {note: v, type:''};
@@ -233,7 +267,7 @@
           if (selectedDay && dayCells[selectedDay]) dayCells[selectedDay].classList.add('is-selected');
         }
 
-        // Contadores por mes visible (solo días reales 1..n)
+        // ===== Contadores por mes visible
         function updateSummary(){
           var y = view.getFullYear(), m = view.getMonth();
           var dim = new Date(y, m + 1, 0).getDate();
@@ -253,6 +287,7 @@
           el.sumLegs.textContent = String(legs);
         }
 
+        // ===== Pintado
         function render(){
           var y = view.getFullYear(), m = view.getMonth();
           var label = MONTHS[m] + ' ' + y;
@@ -273,7 +308,9 @@
             el.days.appendChild(blank);
           }
 
+          var todayDate = getToday();
           var todayCell = null;
+
           for (var d=1; d<=dim; d++){
             (function(day){
               var cell = document.createElement('div');
@@ -283,7 +320,7 @@
               var dow = new Date(y, m, day).getDay();
               if (dow === 6 || dow === 0) cell.classList.add('weekend');
 
-              if (y === today.getFullYear() && m === today.getMonth() && day === today.getDate()){
+              if (y === todayDate.getFullYear() && m === todayDate.getMonth() && day === todayDate.getDate()){
                 cell.classList.add('is-today'); todayCell = cell;
               }
 
@@ -302,8 +339,13 @@
               cell.addEventListener('click', function(ev){
                 var t = ev.target; if (t === ta || t === edit) return; setSelected(day);
               });
-              edit.onclick = function(){ var opened=!ta.classList.contains('hidden'); ta.classList.toggle('hidden', opened); if(!opened){try{ta.focus();}catch(e){}} };
-              ta.oninput = function(){ var month=loadMonth(view); var ent=normalizeDayEntry(month[day]); ent.note=ta.value.trim(); month[day]=ent; saveMonth(view, month); prev.textContent=ent.note; };
+              edit.onclick = function(){
+                var opened=!ta.classList.contains('hidden'); ta.classList.toggle('hidden', opened); if(!opened){try{ta.focus();}catch(e){}}
+              };
+              ta.oninput = function(){
+                var month=loadMonth(view); var ent=normalizeDayEntry(month[day]);
+                ent.note=ta.value.trim(); month[day]=ent; saveMonth(view, month); prev.textContent=ent.note;
+              };
 
               cell.appendChild(num); cell.appendChild(typeBadge); cell.appendChild(prev); cell.appendChild(ta); cell.appendChild(edit);
               el.days.appendChild(cell);
@@ -315,9 +357,13 @@
           updateSummary();
         }
 
-        // Navegación
+        // ===== Navegación
         function shiftMonth(delta){ var y=view.getFullYear(), m=view.getMonth()+delta; view=new Date(y, m, 1); render(); }
-        function goToday(){ view=new Date(today.getFullYear(), today.getMonth(), 1); render(); }
+        function goToday(){
+          var t = getToday();
+          view=new Date(t.getFullYear(), t.getMonth(), 1);
+          render();
+        }
         el.prev.onclick = function(){ shiftMonth(-1); };
         el.next.onclick = function(){ shiftMonth(1); };
         el.today.onclick = function(){ goToday(); };
@@ -328,7 +374,7 @@
           else if (ev.key.toLowerCase && ev.key.toLowerCase() === 'h') goToday();
         });
 
-        // UI badge helper
+        // ===== UI badge helper
         function updateBadgeUI(day, type){
           var cell = dayCells[day]; if (!cell) return;
           var badge = cell.querySelector('.type-badge');
@@ -337,7 +383,7 @@
           badge.className='type-badge ' + type; badge.textContent = type.charAt(0).toUpperCase() + type.slice(1); badge.classList.remove('hidden');
         }
 
-        // Aplicar / quitar tipo
+        // ===== Aplicar / quitar tipo
         function applyType(type){
           if (!selectedDay){ alert('Primero selecciona un día del calendario.'); return; }
           var month = loadMonth(view);
@@ -351,17 +397,55 @@
         var typeCards = document.querySelectorAll('.type-card');
         for (var i=0;i<typeCards.length;i++){ (function(card){ card.addEventListener('click', function(){ applyType(card.getAttribute('data-type')); }); })(typeCards[i]); }
 
+        // ===== Actualización al volver a primer plano y al cambiar de día
+        document.addEventListener('visibilitychange', function(){
+          if (!document.hidden){
+            var t = getToday();
+            var changed = t.getTime() !== currentToday.getTime();
+            currentToday = t;
+            if (changed){
+              if (t.getMonth() !== view.getMonth() || t.getFullYear() !== view.getFullYear()){
+                view = new Date(t.getFullYear(), t.getMonth(), 1);
+              }
+              render();
+            } else {
+              // aunque no cambie de día, refrescamos por si hubo cambios externos
+              render();
+            }
+            // Auto-sync al abrir si está activado
+            maybeAutoDownload();
+          } else {
+            // Al ocultarse (salir/minimizar), auto-subir si está activado
+            maybeAutoUpload();
+          }
+        });
+
+        // Chequeo de cambio de día (medianoche)
+        setInterval(function(){
+          var t = getToday();
+          if (t.getTime() !== currentToday.getTime()){
+            currentToday = t;
+            if (t.getMonth() !== view.getMonth() || t.getFullYear() !== view.getFullYear()){
+              view = new Date(t.getFullYear(), t.getMonth(), 1);
+            }
+            render();
+          }
+        }, 60000);
+
         // ======= Sincronización con GitHub Gist (opcional) =======
-        var TOKEN_KEY = 'cal.gist.token', GISTID_KEY = 'cal.gist.id';
-        var tokenInput = document.getElementById('gistToken');
-        var gistIdInput = document.getElementById('gistId');
-        if (tokenInput) tokenInput.value = localStorage.getItem(TOKEN_KEY) || '';
-        if (gistIdInput) gistIdInput.value = localStorage.getItem(GISTID_KEY) || '';
-        if (tokenInput) tokenInput.onchange = function(){ localStorage.setItem(TOKEN_KEY, tokenInput.value.trim()); };
-        if (gistIdInput) gistIdInput.onchange = function(){ localStorage.setItem(GISTID_KEY, gistIdInput.value.trim()); };
+        var TOKEN_KEY = 'cal.gist.token', GISTID_KEY = 'cal.gist.id', AUTOOPEN_KEY='cal.gist.autoOpen', AUTOCLOSE_KEY='cal.gist.autoClose';
+        if (el.gistToken) el.gistToken.value = localStorage.getItem(TOKEN_KEY) || '';
+        if (el.gistId) el.gistId.value = localStorage.getItem(GISTID_KEY) || '';
+        if (el.autoOpen) el.autoOpen.checked = localStorage.getItem(AUTOOPEN_KEY) === '1';
+        if (el.autoClose) el.autoClose.checked = localStorage.getItem(AUTOCLOSE_KEY) === '1';
+
+        if (el.gistToken) el.gistToken.onchange = function(){ localStorage.setItem(TOKEN_KEY, el.gistToken.value.trim()); };
+        if (el.gistId) el.gistId.onchange = function(){ localStorage.setItem(GISTID_KEY, el.gistId.value.trim()); };
+        if (el.autoOpen) el.autoOpen.onchange = function(){ localStorage.setItem(AUTOOPEN_KEY, el.autoOpen.checked ? '1' : '0'); };
+        if (el.autoClose) el.autoClose.onchange = function(){ localStorage.setItem(AUTOCLOSE_KEY, el.autoClose.checked ? '1' : '0'); };
 
         function requireToken(){
-          var t = (tokenInput && tokenInput.value || '').trim();
+          var t = (el.gistToken && el.gistToken.value || '').trim();
           if (!t){ alert('Introduce tu GitHub Token (scope: gist)'); throw new Error('no token'); }
           return t;
         }
@@ -390,25 +474,27 @@
             var res = await fetch('https://api.github.com/gists', { method:'POST', headers: headersJSON(token), body: JSON.stringify(body) });
             if (!res.ok) throw new Error('HTTP '+res.status);
             var data = await res.json(); var id = data.id;
-            gistIdInput.value = id; localStorage.setItem(GISTID_KEY, id);
+            el.gistId.value = id; localStorage.setItem(GISTID_KEY, id);
             alert('Gist creado: ' + id);
           } catch(e){ alert('No se pudo crear el Gist: ' + (e && e.message ? e.message : e)); }
         }
+
         async function uploadToGist(){
           try{
             var token = requireToken();
-            var id = (gistIdInput && gistIdInput.value || '').trim();
+            var id = (el.gistId && el.gistId.value || '').trim();
             if (!id){ alert('Pon el Gist ID o crea uno nuevo.'); return; }
             var files = { 'gym-datos.json': { content: JSON.stringify(buildDump(), null, 2) } };
             var res = await fetch('https://api.github.com/gists/' + id, { method:'PATCH', headers: headersJSON(token), body: JSON.stringify({ files: files }) });
             if (!res.ok) throw new Error('HTTP '+res.status);
-            alert('Datos subidos al Gist.');
-          } catch(e){ alert('Error al subir: ' + (e && e.message ? e.message : e)); }
+            // alert opcional para auto-subida: mejor no molestar
+          } catch(e){ console.error(e); alert('Error al subir: ' + (e && e.message ? e.message : e)); }
         }
+
         async function downloadFromGist(){
           try{
             var token = requireToken();
-            var id = (gistIdInput && gistIdInput.value || '').trim();
+            var id = (el.gistId && el.gistId.value || '').trim();
             if (!id){ alert('Pon el Gist ID.'); return; }
             var res = await fetch('https://api.github.com/gists/' + id, { headers: headersJSON(token) });
             if (!res.ok) throw new Error('HTTP '+res.status);
@@ -423,17 +509,36 @@
               }
             }
             render();
-            alert('Datos descargados del Gist.');
-          } catch(e){ alert('Error al bajar: ' + (e && e.message ? e.message : e)); }
+            // alert opcional
+          } catch(e){ console.error(e); alert('Error al bajar: ' + (e && e.message ? e.message : e)); }
+        }
+
+        function hasSyncConfig(){
+          return (el.gistToken && el.gistToken.value.trim() && el.gistId && el.gistId.value.trim());
+        }
+        function maybeAutoDownload(){
+          if (el.autoOpen && el.autoOpen.checked && hasSyncConfig()){
+            downloadFromGist();
+          }
+        }
+        function maybeAutoUpload(){
+          if (el.autoClose && el.autoClose.checked && hasSyncConfig()){
+            // intentar subir sin bloquear
+            uploadToGist();
+          }
         }
 
         if (el.createGist) el.createGist.onclick = createGist;
-        if (el.gistUpload) el.gistUpload.onclick = uploadToGist;
-        if (el.gistDownload) el.gistDownload.onclick = downloadFromGist;
+        if (el.gistUpload) el.gistUpload.onclick = function(){ uploadToGist().then(()=>alert('Datos subidos al Gist.')); };
+        if (el.gistDownload) el.gistDownload.onclick = function(){ downloadFromGist().then(()=>alert('Datos descargados del Gist.')); };
+
+        // También dispara subida al cerrar la página (algunos navegadores lo ignoran si es async)
+        window.addEventListener('pagehide', function(){ maybeAutoUpload(); });
 
         // init
         buildHead();
-        goToday();
+        goToday();            // pinta mes actual y marca “hoy”
+        maybeAutoDownload();  // si está activado, baja datos al abrir
 
       } catch(e){
         try { console.error(e); } catch(_) {}
